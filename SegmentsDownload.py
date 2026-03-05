@@ -22,6 +22,36 @@ class Downloader:
             os.makedirs(path)
             print(f'MADE: {path}')
 
+    def is_single_mp4(self, urls):
+        return len(urls) == 1
+    
+    def download_mp4_with_progress(self, url, output_file):
+        print("Single MP4 detected. Downloading directly...")
+
+        with requests.get(url, stream=True, verify=self.verify) as r:
+            r.raise_for_status()
+            total_size = int(r.headers.get("Content-Length", 0))
+            downloaded = 0
+            chunk_size = 8192
+
+            with open(output_file, "wb") as f:
+                for chunk in r.iter_content(chunk_size=chunk_size):
+                    if not chunk:
+                        continue
+                    f.write(chunk)
+                    downloaded += len(chunk)
+
+                    if total_size > 0:
+                        progress = (downloaded / total_size) * 100
+                        print(
+                            f"Download Progress: {progress:.2f}% "
+                            f"({downloaded / 1024 / 1024:.2f}MB / {total_size / 1024 / 1024:.2f}MB)",
+                            end='\r',
+                            flush=True
+                        )
+
+        print("\n✅ Ready to watch the video.")
+
     async def download_segment(self, session: aiohttp.ClientSession, sem, url, file_path):
         """ 1つの動画セグメントをダウンロードする（リトライ機能付き） """
         retry_count = 0
@@ -55,6 +85,7 @@ class Downloader:
         downloaded_files = set()
         total_segments = len(urls)
         completed_segments = 0
+        download_failed = 0
 
         print('#' * 60)
         sem = asyncio.Semaphore(20)
@@ -147,6 +178,13 @@ class Downloader:
         # check a folder that stores videos
         self.__check_folder_exsist(output_folder)
 
+        # 出力ファイル名を決定
+        output_file = os.path.join(output_folder, f"{filename}.mp4")
+
+        if self.is_single_mp4(urls):
+            self.download_mp4_with_progress(urls[0], output_file)
+            return
+
         # 1. ダウンロードする（並列処理）
         downloaded_files = asyncio.run(self.download_video(urls, temp_folder, filename))
         
@@ -157,9 +195,6 @@ class Downloader:
         # if downloaded files' extensions are jpeg, change it to ts.
         if self.check_fake_extension(downloaded_files):
             downloaded_files = self.change_extension(downloaded_files)
-
-        # 2. 出力ファイル名を決定
-        output_file = os.path.join(output_folder, f"{filename}.mp4")
         
         # 3. ffmpegのリストファイルを作成
         list_file = f"{temp_folder}/temp_file_list.txt"

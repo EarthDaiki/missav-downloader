@@ -93,9 +93,3 @@ class Missav:
         master_url = master_urls[-1]
         segment_urls = self.get_segment_urls(master_url)
         self.downloader.get_video(segment_urls, path, title)
-
-
-if __name__ == '__main__':
-    app = Missav()
-    app.run()
-    
